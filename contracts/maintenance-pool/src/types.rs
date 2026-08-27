@@ -12,6 +12,7 @@ pub struct MaintenancePool {
     pub balance: i128,
     pub total_deposited: i128,
     pub total_withdrawn: i128,
+    pub total_fees_collected: i128,
     pub created_at: u64,
     pub deposit_count: u32,
 }

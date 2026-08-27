@@ -13,6 +13,7 @@ pub enum EscrowStatus {
 pub struct Escrow {
     pub token: Address,
     pub amount: i128,
+    pub total_fees_collected: i128,
     pub status: EscrowStatus,
     pub created_at: u64,
     pub deadline: u64,

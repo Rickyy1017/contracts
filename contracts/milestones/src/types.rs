@@ -21,6 +21,8 @@ pub struct Milestone {
     /// issue) can grow again — it is the amount a `cancel_milestone`
     /// refund returns to contributors, proportionally.
     pub remaining_budget: i128,
+    /// Running total of protocol fees collected by this milestone (auditability).
+    pub total_fees_collected: i128,
     pub created_at: u64,
     pub closed: bool,
     /// issue_id -> allocated amount (0 once released and removed from the

@@ -104,6 +104,7 @@ impl MilestonesContract {
             token,
             total_budget,
             remaining_budget: total_budget,
+            total_fees_collected: 0,
             created_at: env.ledger().timestamp(),
             closed: false,
             allocations: Map::new(&env),
@@ -264,7 +265,7 @@ impl MilestonesContract {
         require_admin(&env)?.require_auth();
 
         let mkey = DataKey::Milestone(milestone_id);
-        let milestone: Milestone = env
+        let mut milestone: Milestone = env
             .storage()
             .persistent()
             .get(&mkey)
@@ -292,6 +293,10 @@ impl MilestonesContract {
 
         if payouts.fee > 0 {
             token_client.transfer(&contract_address, &treasury, &payouts.fee);
+            // record collected fee on-chain for auditability
+            milestone.total_fees_collected += payouts.fee;
+            env.storage().persistent().set(&mkey, &milestone);
+            extend_ttl(&env, &mkey);
         }
         for (recipient, share) in payouts.shares.iter() {
             if share > 0 {

@@ -75,6 +75,7 @@ impl MaintenancePoolContract {
                 balance: 0,
                 total_deposited: 0,
                 total_withdrawn: 0,
+                total_fees_collected: 0,
                 created_at: env.ledger().timestamp(),
                 deposit_count: 0,
             },
@@ -153,6 +154,8 @@ impl MaintenancePoolContract {
 
         if fee > 0 {
             token_client.transfer(&contract_address, &treasury, &fee);
+            // record collected fee on-chain for auditability
+            pool.total_fees_collected += fee;
         }
         token_client.transfer(&contract_address, &recipient, &payout);
 

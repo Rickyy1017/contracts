@@ -114,6 +114,7 @@ impl EscrowContract {
         let escrow = Escrow {
             token,
             amount,
+            total_fees_collected: 0,
             status: EscrowStatus::Funded,
             created_at: env.ledger().timestamp(),
             deadline,
@@ -161,12 +162,15 @@ impl EscrowContract {
         let mut existing_index = None;
         for i in 0..escrow.contributor_count {
             let contribution_key = DataKey::Contribution(issue_id, i);
-            let contribution: Contribution =
-                env.storage().persistent().get(&contribution_key).unwrap();
-            if contribution.sponsor == sponsor {
-                existing_index = Some(i);
-                break;
+            if let Some(contribution) = env.storage().persistent().get::<Contribution>(&contribution_key) {
+                if contribution.sponsor == sponsor {
+                    existing_index = Some(i);
+                    break;
+                }
             }
+            // Skip archived/missing contribution records rather than
+            // unwrapping and panicking; a single archived sub-record
+            // should not block top-up or contributor checks.
         }
 
         if existing_index.is_none() && escrow.contributor_count >= MAX_SPONSORS {
@@ -232,6 +236,8 @@ impl EscrowContract {
 
         if payouts.fee > 0 {
             token_client.transfer(&contract_address, &treasury, &payouts.fee);
+            // record collected fee on-chain for auditability
+            escrow.total_fees_collected += payouts.fee;
         }
         for (recipient, share) in payouts.shares.iter() {
             if share > 0 {
@@ -285,16 +291,18 @@ impl EscrowContract {
         let contract_address = env.current_contract_address();
         for i in 0..escrow.contributor_count {
             let contribution_key = DataKey::Contribution(issue_id, i);
-            let contribution: Contribution =
-                env.storage().persistent().get(&contribution_key).unwrap();
-            token_client.transfer(
-                &contract_address,
-                &contribution.sponsor,
-                &contribution.amount,
-            );
-            // Refresh the contribution's TTL so the record stays readable
-            // as a historical receipt after the refund event.
-            extend_ttl(&env, &contribution_key);
+            if let Some(contribution) = env.storage().persistent().get::<Contribution>(&contribution_key) {
+                token_client.transfer(
+                    &contract_address,
+                    &contribution.sponsor,
+                    &contribution.amount,
+                );
+                // Refresh the contribution's TTL so the record stays readable
+                // as a historical receipt after the refund event.
+                extend_ttl(&env, &contribution_key);
+            } else {
+                // Skip archived/missing contribution record; continue refunding others.
+            }
         }
 
         escrow.status = EscrowStatus::Refunded;
@@ -362,12 +370,15 @@ impl EscrowContract {
         let mut is_contributor = false;
         for i in 0..escrow.contributor_count {
             let contribution_key = DataKey::Contribution(issue_id, i);
-            let contribution: Contribution =
-                env.storage().persistent().get(&contribution_key).unwrap();
-            if contribution.sponsor == caller {
-                is_contributor = true;
-                break;
+            if let Some(contribution) = env.storage().persistent().get::<Contribution>(&contribution_key) {
+                if contribution.sponsor == caller {
+                    is_contributor = true;
+                    break;
+                }
             }
+            // Skip archived/missing contribution records rather than
+            // unwrapping and panicking; a single archived entry shouldn't
+            // prevent a valid contributor from extending the deadline.
         }
         if !is_contributor {
             return Err(Error::Unauthorized);

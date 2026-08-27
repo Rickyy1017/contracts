@@ -177,11 +177,12 @@ fn get_fee_bps(env) -> Result<u32, Error>;
   address). `recipients` basis points must sum to exactly 10000 or the
   call is rejected (`InvalidSplit`) — this is how team-bounty payouts
   work, a single recipient at 10000 bps is just the single-payee case.
-  Deducts `fee_bps` off the top to the treasury, splits the rest
-  pro-rata, with the last recipient absorbing integer-division remainder
-  so no dust is stranded in the contract. Pays out the full crowdfunded
-  total (`escrow.amount`, the sum of every contribution) regardless of
-  how many sponsors contributed. Rejects `AlreadyPaid` / `AlreadyRefunded`.
+  Deducts `fee_bps` off the top to the treasury, then allocates the
+  remainder with largest-remainder rounding so the payout matches the
+  configured split exactly while avoiding stranded dust. Pays out the
+  full crowdfunded total (`escrow.amount`, the sum of every
+  contribution) regardless of how many sponsors contributed. Rejects
+  `AlreadyPaid` / `AlreadyRefunded`.
 - `refund`: every contributor gets back exactly what *they* put in, to
   their own address — not an even split and not the full amount to a
   single sponsor. Callable by the admin at any time (e.g. issue
@@ -299,6 +300,7 @@ pub enum EscrowStatus { Funded, Paid, Refunded }
 pub struct Escrow {
     pub token: Address,
     pub amount: i128, // sum of every contribution accepted so far
+    pub total_fees_collected: i128, // cumulative protocol fees charged
     pub status: EscrowStatus,
     pub created_at: u64,
     pub deadline: u64,
@@ -315,6 +317,7 @@ pub struct Milestone {
     pub token: Address,
     pub total_budget: i128, // sum of every contribution accepted so far
     pub remaining_budget: i128, // unallocated remainder, refunded on cancel
+    pub total_fees_collected: i128, // cumulative protocol fees charged
     pub created_at: u64,
     pub closed: bool,
     pub allocations: Map<u64, i128>, // issue_id -> allocated amount
@@ -332,6 +335,7 @@ pub struct MaintenancePool {
     pub balance: i128,
     pub total_deposited: i128,
     pub total_withdrawn: i128,
+    pub total_fees_collected: i128, // cumulative protocol fees charged
     pub created_at: u64,
     pub deposit_count: u32,
 }
@@ -512,12 +516,9 @@ cargo build --target wasm32v1-none --release \
   -p mergefi-escrow -p mergefi-milestones -p mergefi-maintenance-pool
 ```
 
-Verified in this session: `cargo test --workspace` — **54/54 tests pass**
-(28 escrow, 19 milestones, 7 maintenance-pool, including the
-access-control boundary matrix added in #30 and the multi-sponsor
-crowdfunding tests added in #57/#58) on the native target using
-`soroban_sdk::testutils` (`Env::default()`, `Address::generate`,
-`mock_all_auths`, `register_stellar_asset_contract_v2` for a test token).
+Verified in this session: `cargo test --workspace` is green on the native
+`Env::default()` test target; run `make test` for the current pass count,
+which changes as the suite evolves and should not be hardcoded here.
 The `wasm32v1-none` release build was also verified — all three contracts
 compile to `.wasm` in `target/wasm32v1-none/release/`.
 
